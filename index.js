@@ -122,6 +122,84 @@ async function run() {
       res.send(result);
     });
 
+    // ===== INSTRUCTORS ROUTES =====
+    app.get('/api/instructors', async (req, res) => {
+      try {
+        const result = await usersCollection.find({ 
+          role: 'instructor' 
+        }).project({
+          name: 1,
+          email: 1,
+          photoUrl: 1,
+          address: 1,
+          about: 1,
+          skills: 1
+        }).toArray();
+        
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching instructors:", error);
+        res.status(500).send({ error: error.message });
+      }
+    });
+
+    app.get('/api/popular-instructors', async (req, res) => {
+      try {
+        const pipeline = [
+          { 
+            $match: { 
+              status: 'approved' 
+            } 
+          },
+          { 
+            $group: { 
+              _id: "$instructorEmail", 
+              totalClasses: { $sum: 1 },
+              totalEnrolled: { $sum: "$totalEnrolled" }
+            }
+          },
+          { 
+            $lookup: { 
+              from: "users", 
+              localField: "_id", 
+              foreignField: "email", 
+              as: "instructor" 
+            }
+          },
+          { 
+            $match: { 
+              "instructor.role": "instructor" 
+            }
+          },
+          { 
+            $project: { 
+              _id: 0,
+              email: "$_id",
+              name: { $arrayElemAt: ["$instructor.name", 0] },
+              photoUrl: { $arrayElemAt: ["$instructor.photoUrl", 0] },
+              address: { $arrayElemAt: ["$instructor.address", 0] },
+              totalClasses: 1,
+              totalEnrolled: 1
+            }
+          },
+          { 
+            $sort: { 
+              totalEnrolled: -1 
+            }
+          },
+          { 
+            $limit: 8 
+          }
+        ];
+        
+        const result = await classesCollection.aggregate(pipeline).toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching popular instructors:", error);
+        res.status(500).send({ error: error.message });
+      }
+    });
+
     // ===== CLASS ROUTES =====
     app.post('/api/new-class', verifyJWT, verifyInstructor, async (req, res) => {
       try {
@@ -155,20 +233,35 @@ async function run() {
     });
 
     app.get('/api/classes', async (req, res) => {
-      const result = await classesCollection.find({ status: 'approved' }).toArray();
-      res.send(result);
+      try {
+        const result = await classesCollection.find({ status: 'approved' }).toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching classes:", error);
+        res.status(500).send({ error: error.message });
+      }
     });
 
     app.get('/api/classes/:email', verifyJWT, verifyInstructor, async (req, res) => {
-      const result = await classesCollection.find({ 
-        instructorEmail: req.params.email 
-      }).toArray();
-      res.send(result);
+      try {
+        const result = await classesCollection.find({ 
+          instructorEmail: req.params.email 
+        }).toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching instructor classes:", error);
+        res.status(500).send({ error: error.message });
+      }
     });
 
     app.get('/api/classes-manage', async (req, res) => {
-      const result = await classesCollection.find().toArray();
-      res.send(result);
+      try {
+        const result = await classesCollection.find().toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching all classes:", error);
+        res.status(500).send({ error: error.message });
+      }
     });
 
     app.get('/api/class/:id', async (req, res) => {
@@ -200,7 +293,7 @@ async function run() {
         
         res.send(result);
       } catch (error) {
-        console.error("Error fetching class:", error);
+        console.error("Error fetching class with modules:", error);
         res.status(500).send({ error: error.message });
       }
     });
@@ -253,7 +346,7 @@ async function run() {
             totalDuration: req.body.totalDuration,
             totalLessons: req.body.totalLessons,
             level: req.body.level,
-            status: 'pending', // Reset status to pending when updated
+            status: 'pending',
           }
         };
         
@@ -282,18 +375,16 @@ async function run() {
           return res.status(400).json({ error: 'Feedback dan rating harus diisi' });
         }
 
-        // Simpan feedback ke collection terpisah
         const feedbackData = {
           classId: new ObjectId(classId),
           feedback,
           rating: parseInt(rating),
           createdAt: new Date(),
-          adminEmail: req.decoded.email // Mengambil email admin dari JWT token
+          adminEmail: req.decoded.email
         };
 
         const result = await feedbackCollection.insertOne(feedbackData);
 
-        // Update kelas dengan menambahkan feedbackId
         await classesCollection.updateOne(
           { _id: new ObjectId(classId) },
           { $set: { feedbackId: result.insertedId } }
@@ -310,7 +401,6 @@ async function run() {
       }
     });
 
-    // ENDPOINT: Mendapatkan feedback untuk kelas tertentu
     app.get('/api/classes/:id/feedback', async (req, res) => {
       try {
         const classId = req.params.id;
@@ -335,19 +425,22 @@ async function run() {
     });
 
     app.get('/api/approved-classes', verifyJWT, verifyAdmin, async (req, res) => {
-      const result = await classesCollection.find({ 
-        status: 'approved' 
-      }).toArray();
-      res.send(result);
+      try {
+        const result = await classesCollection.find({ 
+          status: 'approved' 
+        }).toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching approved classes:", error);
+        res.status(500).send({ error: error.message });
+      }
     });
 
     // ===== CART ROUTES =====
-    
     app.post('/api/add-to-cart', verifyJWT, async (req, res) => {
       try {
         const { classId, userMail } = req.body;
         
-        // Cek apakah kelas sudah ada di keranjang
         const existingItem = await cartCollection.findOne({ 
           classId: classId, 
           userMail: userMail 
@@ -427,12 +520,11 @@ async function run() {
       }
     });
 
-
     // ===== PAYMENT ROUTES =====
     app.post('/api/create-payment-intent', async (req, res) => {
       try {
         const { price } = req.body;
-        const amount = parseInt(price * 100); // Convert to cents
+        const amount = parseInt(price * 100);
 
         const paymentIntent = await stripe.paymentIntents.create({
           amount: amount,
@@ -449,7 +541,6 @@ async function run() {
       }
     });
 
-    // Endpoint untuk menyimpan info payment
     app.post('/api/payment-info', verifyJWT, async (req, res) => {
       try {
         const { classesId, userEmail, transactionId, amount } = req.body;
@@ -459,7 +550,6 @@ async function run() {
           ? [new ObjectId(singleClassId)] 
           : classesId.map(id => new ObjectId(id));
 
-        // Update enrollment counts
         const updateOperations = classesToProcess.map(classId => {
           return classesCollection.updateOne(
             { _id: classId },
@@ -474,17 +564,14 @@ async function run() {
 
         await Promise.all(updateOperations);
 
-        // Save payment info
         const paymentResult = await paymentCollection.insertOne(req.body);
 
-        // Remove from cart
         const deleteQuery = singleClassId
           ? { classId: singleClassId, userMail: userEmail }
           : { classId: { $in: classesId }, userMail: userEmail };
 
         await cartCollection.deleteMany(deleteQuery);
 
-        // Create enrollment record
         const enrolledData = {
           userEmail,
           classesId: classesToProcess,
@@ -507,79 +594,52 @@ async function run() {
     });
 
     app.get('/api/payment-history/:email', async (req, res) => {
-      const result = await paymentCollection.find({ userEmail: req.params.email }).sort({ date: -1 }).toArray();
-      res.send(result);
+      try {
+        const result = await paymentCollection.find({ userEmail: req.params.email }).sort({ date: -1 }).toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching payment history:", error);
+        res.status(500).send({ error: error.message });
+      }
     });
 
     app.get('/api/payment-history-length/:email', async (req, res) => {
-      const total = await paymentCollection.countDocuments({ userEmail: req.params.email });
-      res.send({ total });
+      try {
+        const total = await paymentCollection.countDocuments({ userEmail: req.params.email });
+        res.send({ total });
+      } catch (error) {
+        console.error("Error counting payment history:", error);
+        res.status(500).send({ error: error.message });
+      }
     });
 
     // ===== STATS & ANALYTICS ROUTES =====
     app.get('/api/popular_classes', async (req, res) => {
-      const result = await classesCollection.find()
-        .sort({ totalEnrolled: -1 })
-        .limit(6)
-        .toArray();
-      res.send(result);
-    });
-
-    app.get('/api/popular-instructors', async (req, res) => {
-      const pipeline = [
-        { 
-          $group: { 
-            _id: "$instructorEmail", 
-            totalEnrolled: { $sum: "$totalEnrolled" } 
-          }
-        },
-        { 
-          $lookup: { 
-            from: "users", 
-            localField: "_id", 
-            foreignField: "email", 
-            as: "instructor" 
-          }
-        },
-        { 
-          $match: { 
-            "instructor.role": "instructor" 
-          }
-        },
-        { 
-          $project: { 
-            _id: 0, 
-            instructor: { $arrayElemAt: ["$instructor", 0] }, 
-            totalEnrolled: 1 
-          }
-        },
-        { 
-          $sort: { 
-            totalEnrolled: -1 
-          }
-        },
-        { 
-          $limit: 6 
-        }
-      ];
-      
-      const result = await classesCollection.aggregate(pipeline).toArray();
-      res.send(result);
+      try {
+        const result = await classesCollection.find()
+          .sort({ totalEnrolled: -1 })
+          .limit(6)
+          .toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching popular classes:", error);
+        res.status(500).send({ error: error.message });
+      }
     });
 
     app.get('/api/admin-stats', verifyJWT, verifyAdmin, async (req, res) => {
-      const approvedClasses = await classesCollection.countDocuments({ status: 'approved' });
-      const pendingClasses = await classesCollection.countDocuments({ status: 'pending' });
-      const instructors = await usersCollection.countDocuments({ role: 'instructor' });
-      const totalClasses = await classesCollection.countDocuments();
-      const totalEnrolled = await enrolledCollection.countDocuments();
-      
-      res.send({ approvedClasses, pendingClasses, instructors, totalClasses, totalEnrolled });
-    });
-
-    app.get('/api/instructors', async (req, res) => {
-      const result = await usersCollection.find({ role: 'instructor' }).toArray();
-      res.send(result);
+      try {
+        const approvedClasses = await classesCollection.countDocuments({ status: 'approved' });
+        const pendingClasses = await classesCollection.countDocuments({ status: 'pending' });
+        const instructors = await usersCollection.countDocuments({ role: 'instructor' });
+        const totalClasses = await classesCollection.countDocuments();
+        const totalEnrolled = await enrolledCollection.countDocuments();
+        
+        res.send({ approvedClasses, pendingClasses, instructors, totalClasses, totalEnrolled });
+      } catch (error) {
+        console.error("Error fetching admin stats:", error);
+        res.status(500).send({ error: error.message });
+      }
     });
 
     app.get('/api/enrolled-classes/:email', verifyJWT, async (req, res) => {
@@ -614,13 +674,40 @@ async function run() {
 
     // ===== APPLIED INSTRUCTOR ROUTES =====
     app.post('/api/as-instructor', async (req, res) => {
-      const result = await appliedCollection.insertOne(req.body);
-      res.send(result);
+      try {
+        const result = await appliedCollection.insertOne(req.body);
+        res.send(result);
+      } catch (error) {
+        console.error("Error applying as instructor:", error);
+        res.status(500).send({ error: error.message });
+      }
     });
 
     app.get('/api/applied-instructors/:email', async (req, res) => {
-      const result = await appliedCollection.findOne({ email: req.params.email });
-      res.send(result);
+      try {
+        const result = await appliedCollection.findOne({ email: req.params.email });
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching applied instructor:", error);
+        res.status(500).send({ error: error.message });
+      }
+    });
+
+    // ===== DEBUG ROUTES =====
+    app.get('/api/debug/instructors', async (req, res) => {
+      try {
+        const allUsers = await usersCollection.find({}).toArray();
+        const instructors = await usersCollection.find({ role: 'instructor' }).toArray();
+        
+        res.send({
+          totalUsers: allUsers.length,
+          totalInstructors: instructors.length,
+          allUsers: allUsers.map(u => ({ email: u.email, role: u.role, name: u.name })),
+          instructors: instructors
+        });
+      } catch (error) {
+        res.status(500).send({ error: error.message });
+      }
     });
 
     // Health check endpoint
